@@ -8,3 +8,8 @@ lazy val root = (project in file("."))
   )
 
 libraryDependencies += "org.scalafx" %% "scalafx" % "24.0.0-R35"
+
+resolvers += "Akka library repository".at("https://repo.akka.io/maven")
+
+val AkkaVersion = "2.10.6"
+libraryDependencies += "com.typesafe.akka" %% "akka-actor-typed" % AkkaVersion
