@@ -12,7 +12,7 @@ object BoidsApp extends JFXApp3 {
 
     stage = new JFXApp3.PrimaryStage {
       title = "Boids Simulation"
-      scene = new Scene(view.root, 960, 720)
+      scene = new Scene(view.root, 800, 800)
     }
   }
 }
