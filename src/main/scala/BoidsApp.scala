@@ -6,13 +6,13 @@ import controller.BoidsController
 
 object BoidsApp extends JFXApp3 {
   override def start(): Unit = {
-    val model = new BoidsModel()
     val view = new BoidsView()
+    val model = new BoidsModel(view.getWinProps._1, view.getWinProps._2, view.getWinProps._3)
     val controller = new BoidsController(model, view)
 
     stage = new JFXApp3.PrimaryStage {
       title = "Boids Simulation"
-      scene = new Scene(view.root, 800, 800)
+      scene = new Scene(view.root, 1200, 1000)
     }
   }
 }

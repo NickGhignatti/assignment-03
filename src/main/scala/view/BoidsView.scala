@@ -53,4 +53,10 @@ class BoidsView {
     bottom = bottomBar
     left = leftBar
   }
+
+  def getWinProps: (Double, Double, Double) = {
+    canvas.localToScene(0, 0) match {
+      case p => (p.getX, p.getY, 800.0)
+    }
+  }
 }

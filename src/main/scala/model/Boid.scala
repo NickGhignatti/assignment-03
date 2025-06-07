@@ -47,16 +47,16 @@ case class Boid(var x: Double, var y: Double, var vx: Double, var vy: Double) {
     normalizeVector(separationX, separationY)
   }
 
-  def updatePosition(model: BoidsModel): Unit = {
+  def updatePosition(model: BoidsModel, offX: Double, offY: Double, size: Double): Unit = {
     // update position
     this.x += this.vx
     this.y += this.vy
 
     // wrap around edges
-    if (this.x < -model.width / 2) this.x += model.width
-    if (this.x >= model.width / 2) this.x -= model.width
-    if (this.y < -model.height / 2) this.y += model.height
-    if (this.y >= model.height / 2) this.y -= model.height
+    if (this.x < offX) this.x += model.width
+    if (this.x >= offX + size) this.x -= model.width
+    if (this.y < offY) this.y += model.height
+    if (this.y >= offY + size) this.y -= model.height
   }
 
   def updateVelocity(model: BoidsModel): Unit = {
