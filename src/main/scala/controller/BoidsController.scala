@@ -1,8 +1,11 @@
 package controller
 
-import model._
-import view._
+import akka.actor.typed.ActorRef
+import model.*
+import view.*
 import scalafx.scene.paint.Color
+
+import scala.language.postfixOps
 
 class BoidsController(model: BoidsModel, view: BoidsView) {
   private val frameRate = 25
@@ -33,7 +36,6 @@ class BoidsController(model: BoidsModel, view: BoidsView) {
   }
 
   view.resetButton.onAction = _ => {
-    model.reset()
     running = false
   }
 

@@ -1,83 +1,109 @@
 package model
 
-case class Boid(var x: Double, var y: Double, var vx: Double, var vy: Double) {
+import akka.actor.typed.ActorRef
+import akka.actor.typed.Behavior
+import akka.actor.typed.scaladsl.{Behaviors, TimerScheduler}
 
-  def getPosition: (Double, Double) = (this.x, this.y)
+import scala.language.postfixOps
 
-  def getVelocity: (Double, Double) = (this.vx, this.vy)
-
-  private def distanceTo(other: Boid): Double = {
-    Math.sqrt(Math.pow(this.x - other.x, 2) + Math.pow(this.y - other.y, 2))
-  }
-
-  private def getNearbyBoids(boidsModel: BoidsModel): List[Boid] = {
-    boidsModel.getBoids.filter(b => b != this && distanceTo(b) < boidsModel.perceptionRadius)
-  }
+object Boid {
+  sealed trait Command
+  final case class Update(boids: List[ActorRef[Command]]) extends Command
+  final case class GetPosition(replyTo: ActorRef[BoidState]) extends Command
 
   private def normalizeVector(vx: Double, vy: Double): (Double, Double) = {
     val length = Math.sqrt(vx * vx + vy * vy)
     if (length == 0) (0.0, 0.0) else (vx / length, vy / length)
   }
 
-  private def calculateAlignment(nearbyBoids: List[Boid]): (Double, Double) = {
+  private def calculateAlignment(current: BoidState, nearbyBoids: List[BoidState]): (Double, Double) = {
     if (nearbyBoids.isEmpty) return (0.0, 0.0)
 
     val avgVx = nearbyBoids.map(_.vx).sum / nearbyBoids.size
     val avgVy = nearbyBoids.map(_.vy).sum / nearbyBoids.size
 
-    normalizeVector(avgVx - this.vx, avgVy - this.vy)
+    normalizeVector(avgVx - current.vx, avgVy - current.vy)
   }
 
-  private def calculateCohesion(nearbyBoids: List[Boid]): (Double, Double) = {
+  private def calculateCohesion(current: BoidState, nearbyBoids: List[BoidState]): (Double, Double) = {
     if (nearbyBoids.isEmpty) return (0.0, 0.0)
 
     val centerX = nearbyBoids.map(_.x).sum / nearbyBoids.size
     val centerY = nearbyBoids.map(_.y).sum / nearbyBoids.size
 
-    normalizeVector(centerX - this.x, centerY - this.y)
+    normalizeVector(centerX - current.x, centerY - current.y)
   }
 
-  private def calculateSeparation(nearbyBoids: List[Boid], model: BoidsModel): (Double, Double) = {
-    val nearbyBoidsWithinAvoidance = nearbyBoids.filter(b => this.distanceTo(b) < model.avoidanceRadius)
+  private def calculateSeparation(current: BoidState, nearbyBoids: List[BoidState], model: BoidsModel): (Double, Double) = {
+    val nearbyBoidsWithinAvoidance = nearbyBoids.filter(b => current.distanceTo(b) < model.avoidanceRadius)
     if (nearbyBoidsWithinAvoidance.isEmpty) return (0.0, 0.0)
 
-    val separationX = nearbyBoidsWithinAvoidance.map(b => this.x - b.x).sum / nearbyBoidsWithinAvoidance.size
-    val separationY = nearbyBoidsWithinAvoidance.map(b => this.y - b.y).sum / nearbyBoidsWithinAvoidance.size
+    val separationX = nearbyBoidsWithinAvoidance.map(b => current.x - b.x).sum / nearbyBoidsWithinAvoidance.size
+    val separationY = nearbyBoidsWithinAvoidance.map(b => current.y - b.y).sum / nearbyBoidsWithinAvoidance.size
 
     normalizeVector(separationX, separationY)
   }
 
-  def updatePosition(model: BoidsModel): Unit = {
-    // update position
-    this.x += this.vx
-    this.y += this.vy
+  private def updateState(state: BoidState, neighbors: List[BoidState], model: BoidsModel): BoidState = {
+    // updating velocity
+    val (alignmentX, alignmentY) = calculateAlignment(state, neighbors)
+    val (cohesionX, cohesionY) = calculateCohesion(state, neighbors)
+    val (separationX, separationY) = calculateSeparation(state, neighbors, model)
 
-    // wrap around edges
-    if (this.x < 0) this.x += model.width
-    if (this.x >= model.width) this.x -= model.width
-    if (this.y < 0) this.y += model.height
-    if (this.y >= model.height) this.y -= model.height
-  }
+    var newVx = state.vx + alignmentX * model.alignment + cohesionX * model.cohesion + separationX * model.separation
+    var newVy = state.vy + alignmentY * model.alignment + cohesionY * model.cohesion + separationY * model.separation
 
-  def updateVelocity(model: BoidsModel): Unit = {
-    val nearbyBoids = getNearbyBoids(model)
-
-    val (alignmentX, alignmentY) = calculateAlignment(nearbyBoids)
-    val (cohesionX, cohesionY) = calculateCohesion(nearbyBoids)
-    val (separationX, separationY) = calculateSeparation(nearbyBoids, model)
-
-    // update velocity according to alignment, cohesion, and separation
-    this.vx += model.alignment * alignmentX + model.cohesion * cohesionX + model.separation * separationX
-    this.vy += model.alignment * alignmentY + model.cohesion * cohesionY + model.separation * separationY
-
-    // limit speed
-    val speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy)
+    val speed = Math.sqrt(newVx * newVx + newVy * newVy)
 
     if (speed > model.maxSpeed) {
-      val (nx, ny) = normalizeVector(this.vx, this.vy)
-      this.vx = nx * model.maxSpeed
-      this.vy = ny * model.maxSpeed
+      val (normVx, normVy) = normalizeVector(newVx, newVy)
+      newVx = normVx * model.maxSpeed
+      newVy = normVy * model.maxSpeed
     }
-  }
-}
 
+    var newX = state.x + newVx
+    var newY = state.y + newVy
+
+    // wrap around edges
+    if (newX < 0) newX += model.width
+    if (newX >= model.width) newX -= model.width
+    if (newY < 0) newY += model.height
+    if (newY >= model.height) newY -= model.height
+
+    // updating position
+    BoidState(newX, newY, newVx, newVy)
+  }
+
+  def apply(initialState: BoidState, model: BoidsModel): Behavior[Command] =
+    Behaviors.setup { context =>
+      var currentState = initialState
+      Behaviors.receive { (context, message) =>
+        message match {
+          case Update(boids) =>
+            import akka.actor.typed.scaladsl.AskPattern._
+            import akka.actor.typed.Scheduler
+            import akka.util.Timeout
+            import scala.concurrent.duration._
+            import context.executionContext
+
+            implicit val timeout: Timeout = 20.millis
+            implicit val scheduler: Scheduler = context.system.scheduler
+            val boidsFutures = boids.filterNot(_ == context.self).map { ref =>
+              ref.ask(GetPosition)
+                .mapTo[BoidState]
+                .recover { case _ => null }
+            }
+
+            scala.concurrent.Future.sequence(boidsFutures).foreach { positions =>
+              val neighbors = positions.filter(pos => currentState.distanceTo(pos) < model.perceptionRadius)
+              currentState = updateState(currentState, neighbors, model)
+            }
+            Behaviors.same
+
+          case GetPosition(replyTo) =>
+            replyTo ! currentState
+            Behaviors.same
+        }
+      }
+    }
+}
