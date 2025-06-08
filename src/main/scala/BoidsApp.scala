@@ -7,7 +7,7 @@ import controller.BoidsController
 object BoidsApp extends JFXApp3 {
   override def start(): Unit = {
     val view = new BoidsView()
-    val model = new BoidsModel(view.getWinProps._1, view.getWinProps._2, view.getWinProps._3)
+    val model = new BoidsModel()
     val controller = new BoidsController(model, view)
 
     stage = new JFXApp3.PrimaryStage {

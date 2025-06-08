@@ -1,12 +1,12 @@
 package model
 
-class BoidsModel(val offX: Double, val offY: Double, size: Double) {
+class BoidsModel() {
   var boids: List[Boid] = List()
   var separation: Double = 1.0
   var alignment: Double = 1.0
   var cohesion: Double = 1.0
-  val width: Double = offX + size
-  val height: Double = offY + size
+  val width: Double = 800.0
+  val height: Double = 800.0
   val maxSpeed: Double = 4.0
   val perceptionRadius: Double = 50.0
   val avoidanceRadius: Double = 20.0
@@ -24,7 +24,7 @@ class BoidsModel(val offX: Double, val offY: Double, size: Double) {
   def update(): Unit = {
     for (boid <- boids) {
       boid.updateVelocity(this)
-      boid.updatePosition(this, offX, offY, size)
+      boid.updatePosition(this)
     }
   }
 }
