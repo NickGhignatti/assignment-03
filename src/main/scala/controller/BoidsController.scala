@@ -5,6 +5,7 @@ import model.*
 import view.*
 import scalafx.scene.paint.Color
 
+import scala.concurrent.Future
 import scala.language.postfixOps
 
 class BoidsController(model: BoidsModel, view: BoidsView) {
@@ -54,7 +55,7 @@ class BoidsController(model: BoidsModel, view: BoidsView) {
   private def draw(): Unit = {
     val gc = view.canvas.graphicsContext2D
     gc.clearRect(0, 0, view.canvas.width(), view.canvas.height())
-    for (boid <- model.boids) {
+    for (boid <- model.getBoidsStates) {
       gc.fill = Color.Black
       gc.fillOval(boid.x, boid.y, 5, 5)
     }
