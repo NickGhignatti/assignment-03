@@ -1,13 +1,9 @@
 package model
 
-import akka.actor.typed.{ActorRef, Scheduler}
+import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
-import model.Boid.GetPosition
 
-import scala.concurrent.{Await, ExecutionContextExecutor, Future}
-
-class BoidsModel {
-  var boids: List[ActorRef[Boid.Command]] = List()
+class BoidsModelParams {
   var separation: Double = 1.0
   var alignment: Double = 1.0
   var cohesion: Double = 1.0
@@ -16,43 +12,37 @@ class BoidsModel {
   val maxSpeed: Double = 4.0
   val perceptionRadius: Double = 50.0
   val avoidanceRadius: Double = 20.0
-  private val actorSystem: akka.actor.typed.ActorSystem[Nothing] = akka.actor.typed.ActorSystem(Behaviors.empty, "BoidsSystem")
+}
 
-  def getBoids: List[ActorRef[Boid.Command]] = boids
+object BoidsModel {
+  sealed trait Command
+  final case class CreateBoids(count: Int) extends Command
+  final case class UpdateBoids() extends Command
 
-  def createBoids(count: Int): Unit =
-    for (i <- 1 to count) {
-      val x = -width / 2 + Math.random * width
-      val y = -height / 2 + Math.random * height
-      val vx = Math.random * maxSpeed / 2 - maxSpeed / 4
-      val vy = Math.random * maxSpeed / 2 - maxSpeed / 4
-      boids = boids :+ actorSystem.systemActorOf(Boid(BoidState(x, y, vx, vy), this), s"boid-$i")
-    }
+  var boids: List[ActorRef[Boid.Command]] = List.empty
+  val model = new BoidsModelParams()
 
-  def reset(): Unit = boids = List()
-
-  def update(): Unit = {
-    for (boid <- boids) {
-      boid ! Boid.Update(boids.filterNot(_ == boid))
+  def apply(): Behavior[Command] = {
+    Behaviors.setup[Command] { context =>
+      val actorSystem = context.system
+      Behaviors.receiveMessage {
+        case CreateBoids(count) =>
+          println(s"Created $count boids.")
+          for (i <- 1 to count) {
+            val x = -model.width / 2 + Math.random * model.width
+            val y = -model.height / 2 + Math.random * model.height
+            val vx = Math.random * model.maxSpeed / 2 - model.maxSpeed / 4
+            val vy = Math.random * model.maxSpeed / 2 - model.maxSpeed / 4
+            boids = boids :+ actorSystem.systemActorOf(Boid(BoidState(x, y, vx, vy), model), s"boid-$i")
+          }
+          println(s"Boids: $boids")
+          Behaviors.same
+        case UpdateBoids() =>
+          boids.foreach { boid =>
+            boid ! Boid.Update(boids)
+          }
+          Behaviors.same
+      }
     }
   }
-
-  def getBoidsStates: List[BoidState] =
-    import akka.actor.typed.scaladsl.AskPattern._
-    import akka.util.Timeout
-    import scala.concurrent.duration._
-
-    implicit val timeout: Timeout = 3.millis
-    implicit val scheduler: Scheduler = actorSystem.scheduler
-    implicit val executionContext: ExecutionContextExecutor = actorSystem.executionContext
-    val boidsFutures: List[Future[BoidState]] = boids.map { ref =>
-      ref.ask(GetPosition)
-        .mapTo[BoidState]
-        .recover { case _ => null }
-    }
-
-    val futureList: Future[List[BoidState]] = Future.sequence(boidsFutures)
-
-    // Block and get the result (with timeout)
-    Await.result(futureList, 800.millis).filter(_ != null)
 }
