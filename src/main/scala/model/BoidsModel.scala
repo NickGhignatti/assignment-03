@@ -14,8 +14,7 @@ object BoidsModel {
     Behaviors.setup(context => new BoidsModel(context))
 
   sealed trait Command
-  final case class UpdateBoids() extends Command
-  final case class GetBoids(replyTo: ActorRef[List[Boid]]) extends Command
+  final case class UpdateBoids(replyTo: ActorRef[List[Boid]]) extends Command
   final case class CreateBoids(quantity: Int) extends Command
   private final case class UpdateFailed() extends Command
   private final case class UpdateFinished() extends Command
@@ -36,10 +35,9 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
 
   override def onMessage(msg: BoidsModel.Command): Behavior[BoidsModel.Command] =
     msg match {
-      case BoidsModel.UpdateBoids() =>
+      case BoidsModel.UpdateBoids(replyTo) =>
         import akka.util.Timeout
         import scala.concurrent.duration._
-        println(s"BoidsModel: Updating positions of ${boids.size} boids")
 
         implicit val timeout: Timeout = Timeout(20.millis)
         implicit val scheduler: Scheduler = context.system.scheduler
@@ -50,12 +48,14 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
               boid ! Boid.UpdatePosition(allBoids, this)
             }
             effectiveBoids =  allBoids
-            println(s"BoidsModel: Updated positions of ${effectiveBoids.size} boids")
+            replyTo ! effectiveBoids
             BoidsModel.UpdateFinished()
           case Failure(_) =>
-            println("BoidsModel: Failed to update boids")
             BoidsModel.UpdateFailed()
         }
+        this
+
+      case BoidsModel.UpdateFinished() =>
         this
 
       case BoidsModel.CreateBoids(quantity) =>
@@ -63,11 +63,6 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
           val boid = Boid(this)
           boids = boids :+ context.spawn(boid, s"boid-$i")
         }
-        this
-
-      case BoidsModel.GetBoids(replyTo) =>
-        println(s"BoidsModel: Sending ${effectiveBoids.size} boids to controller")
-        replyTo ! effectiveBoids
         this
     }
 }

@@ -1,59 +1,81 @@
 package view
 
-import akka.actor.typed.scaladsl.Behaviors
-import akka.actor.typed.Behavior
+import akka.actor.Cancellable
+import akka.actor.typed.scaladsl.AskPattern.Askable
+import akka.actor.typed.{ActorRef, Behavior, Scheduler}
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+
 import scalafx.application.Platform
 import scalafx.scene.paint.Color
 
+import model.BoidsModel
+import scala.util.{Failure, Success}
+
 object BoidsViewActor {
   sealed trait Command
-  case class UpdateView(positions: List[(Double, Double)], boidCount: Int, fps: Double) extends Command
-  case object ClearCanvas extends Command
+  case class UpdateView() extends Command
+  private case class PositionsUpdated() extends Command
+  private case class PositionError(exception: Throwable) extends Command
 
-  def apply(view: BoidsView): Behavior[Command] = Behaviors.setup { context =>
-    new BoidsViewActor(view).ready()
-  }
-
-  private case class StartSimulation(boidsCount: Int) extends Command
-  private case class PauseResumeSimulation() extends Command
-  private case class ResetSimulation() extends Command
+  def apply(view: BoidsView, model: ActorRef[BoidsModel.Command]): Behavior[Command] =
+    Behaviors.setup { context =>
+      new BoidsViewActor(context, view, model).ready()
+    }
 }
 
-class BoidsViewActor(view: BoidsView) {
+class BoidsViewActor(context: ActorContext[BoidsViewActor.Command], view: BoidsView, model: ActorRef[BoidsModel.Command]) {
   import BoidsViewActor._
 
-  def ready(): Behavior[Command] = Behaviors.receiveMessage {
-    case UpdateView(positions, boidCount, fps) =>
-      drawBoids(positions, boidCount, fps)
-      Behaviors.same
+  private var timer: Option[Cancellable] = None
 
-    case ClearCanvas =>
-      clearCanvas()
-      Behaviors.same
+  private def startTimer(): Unit =
+    import scala.concurrent.duration.*
 
-    case StartSimulation(boidsCount) =>
-      println(s"In actor starting simulation with $boidsCount boids")
-      Behaviors.same
+    timer = Some(
+      context.system.scheduler.scheduleAtFixedRate(
+        40.millis,
+        40.millis
+      )(() => context.self ! UpdateView())(context.executionContext)
+    )
 
-    case PauseResumeSimulation() =>
-      Behaviors.same
+  private def ready(): Behavior[BoidsViewActor.Command] =
+    view.startButton.onAction = _ => {
+      model ! BoidsModel.CreateBoids(view.boidInput.text.value.toIntOption.getOrElse(0))
+      startTimer()
+    }
+    Behaviors.receiveMessage {
+      case UpdateView() =>
+        import akka.util.Timeout
+        import scala.concurrent.duration._
 
-    case ResetSimulation() =>
-      Behaviors.same
-  }
+        implicit val timeout: Timeout = Timeout(100.millis)
+        implicit val scheduler: Scheduler = context.system.scheduler
+
+        context.pipeToSelf(model.ask(BoidsModel.UpdateBoids.apply)) {
+          case Success(boids) => {
+            drawBoids(boids.map(b => b.position), boids.size, 25.0)
+            PositionsUpdated()
+          }
+          case Failure(exception) => PositionError(exception)
+        }
+        Behaviors.same
+      case PositionsUpdated() =>
+        Behaviors.same
+      case PositionError(exception) =>
+        println(s"Error updating positions: ${exception.getMessage}")
+        Behaviors.same
+    }
 
   private def drawBoids(positions: List[(Double, Double)], boidCount: Int, fps: Double): Unit = {
     Platform.runLater {
       val gc = view.canvas.graphicsContext2D
       gc.clearRect(0, 0, view.canvas.width.value, view.canvas.height.value)
 
-      // Draw boids as circles
-      gc.fill = Color.Blue
+      gc.fill = Color.Black
       positions.foreach { case (x, y) =>
         gc.fillOval(x, y, 5, 5)
       }
 
-      // Update info text
       view.infoText.text = s"Num. Boids: $boidCount\nFramerate: ${fps.round}"
     }
   }
