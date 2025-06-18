@@ -1,64 +1,94 @@
 package controller
 
-import akka.actor.typed.ActorRef
-import model.*
-import view.*
-import scalafx.scene.paint.Color
+import akka.actor.Cancellable
+import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
+import akka.actor.typed.{ActorRef, Behavior}
+import model.BoidsModel
+import model.BoidsModel.Command as ModelCommand
+import view.BoidsViewActor
+import view.BoidsViewActor.Command as ViewCommand
 
-import scala.concurrent.Future
-import scala.language.postfixOps
+import scala.concurrent.duration.*
 
-class BoidsController(model: BoidsModel, view: BoidsView) {
-  private val frameRate = 25
-  private var running = false
+object BoidsController {
+  sealed trait Command
+  case class StartSimulation(boidsCount: Int) extends Command
+  case class PauseResumeSimulation() extends Command
+  case class ResetSimulation() extends Command
+  case class SetBoidsCount(count: Int) extends Command
+  case class SimulationTick() extends Command
+  case class PositionsUpdated(positions: List[(Double, Double)]) extends Command
 
-  private val timer = new javafx.animation.AnimationTimer {
-    private var lastUpdate: Long = 0L
-    private val intervalNanos = (1e9 / frameRate).toLong  // 1e9 nanoseconds in a second
+  def apply(model: ActorRef[BoidsModel.Command], view: ActorRef[BoidsViewActor.Command]): Behavior[Command] = Behaviors.setup { context =>
+//    val model = context.spawn(BoidsModel(), "boids-model")
+//    val view = context.spawn(BoidsViewActor(), "boids-view")
 
-    override def handle(now: Long): Unit = {
-      if (running && now - lastUpdate >= intervalNanos) {
-        model.update()
-        draw()
-        lastUpdate = now
-      }
-    }
+    new BoidsController(context, model, view).idle()
+  }
+}
+
+class BoidsController(context: ActorContext[BoidsController.Command], model: ActorRef[ModelCommand], view: ActorRef[ViewCommand]) {
+  import BoidsController._
+
+  private var timer: Option[Cancellable] = None
+  private var boidCount: Int = 0
+  private var frameCount: Long = 0
+  private var lastFrameTime: Long = System.currentTimeMillis()
+
+  def idle(): Behavior[Command] = Behaviors.receiveMessage {
+    case StartSimulation(boidsCount) =>
+      this.boidCount = boidsCount
+      model ! BoidsModel.CreateBoids(boidCount)
+      startTimer()
+      running()
+
+    case SetBoidsCount(count) =>
+      boidCount = count
+      Behaviors.same
+
+    case _ => Behaviors.same
   }
 
-  view.startButton.onAction = _ => {
-    val count = view.boidInput.text.value.toIntOption.getOrElse(0)
-    model.createBoids(count)
-    running = true
-    timer.start()
+  def running(): Behavior[Command] = Behaviors.receiveMessage {
+    case PauseResumeSimulation() =>
+      cancelTimer()
+      idle()
+
+    case ResetSimulation() =>
+      cancelTimer()
+//      model ! BoidsModel.Reset
+      view ! BoidsViewActor.ClearCanvas
+      idle()
+
+    case SimulationTick() =>
+      model ! BoidsModel.UpdateBoids()
+      Behaviors.same
+
+    case PositionsUpdated(positions) =>
+      frameCount += 1
+      val currentTime = System.currentTimeMillis()
+      val fps = if (currentTime > lastFrameTime) {
+        1000.0 / (currentTime - lastFrameTime)
+      } else 60.0
+      lastFrameTime = currentTime
+
+      view ! BoidsViewActor.UpdateView(positions, boidCount, fps)
+      Behaviors.same
+
+    case _ => Behaviors.same
   }
 
-  view.pauseButton.onAction = _ => {
-    running = !running
+  private def startTimer(): Unit = {
+    timer = Some(
+      context.system.scheduler.scheduleAtFixedRate(
+        40.millis,
+        40.millis
+      )(() => context.self ! SimulationTick())(context.executionContext)
+    )
   }
 
-  view.resetButton.onAction = _ => {
-    running = false
-  }
-
-  view.separationSlider.value.onChange { (_, _, newVal) =>
-    model.separation = newVal.doubleValue()
-  }
-
-  view.alignmentSlider.value.onChange { (_, _, newVal) =>
-    model.alignment = newVal.doubleValue()
-  }
-
-  view.cohesionSlider.value.onChange { (_, _, newVal) =>
-    model.cohesion = newVal.doubleValue()
-  }
-
-  private def draw(): Unit = {
-    val gc = view.canvas.graphicsContext2D
-    gc.clearRect(0, 0, view.canvas.width(), view.canvas.height())
-    for (boid <- model.getBoidsStates) {
-      gc.fill = Color.Black
-      gc.fillOval(boid.x, boid.y, 5, 5)
-    }
-    view.infoText.text = s"Num. Boids: ${model.boids.length}\nFramerate: $frameRate"
+  private def cancelTimer(): Unit = {
+    timer.foreach(_.cancel())
+    timer = None
   }
 }
