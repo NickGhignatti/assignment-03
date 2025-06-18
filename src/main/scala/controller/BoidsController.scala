@@ -2,11 +2,13 @@ package controller
 
 import akka.actor.Cancellable
 import akka.actor.typed.scaladsl.{ActorContext, Behaviors}
-import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.{ActorRef, Behavior, Scheduler}
+import akka.actor.typed.scaladsl.AskPattern.Askable
 import model.BoidsModel
 import model.BoidsModel.Command as ModelCommand
 import view.BoidsViewActor
 import view.BoidsViewActor.Command as ViewCommand
+import scala.util.{Success, Failure}
 
 import scala.concurrent.duration.*
 
@@ -18,13 +20,12 @@ object BoidsController {
   case class SetBoidsCount(count: Int) extends Command
   case class SimulationTick() extends Command
   case class PositionsUpdated(positions: List[(Double, Double)]) extends Command
+  private case class PositionError(exception: Throwable) extends Command
 
-  def apply(model: ActorRef[BoidsModel.Command], view: ActorRef[BoidsViewActor.Command]): Behavior[Command] = Behaviors.setup { context =>
-//    val model = context.spawn(BoidsModel(), "boids-model")
-//    val view = context.spawn(BoidsViewActor(), "boids-view")
-
-    new BoidsController(context, model, view).idle()
-  }
+  def apply(model: ActorRef[BoidsModel.Command], view: ActorRef[BoidsViewActor.Command]): Behavior[Command] =
+    Behaviors.setup {
+      context => new BoidsController(context, model, view).idle()
+    }
 }
 
 class BoidsController(context: ActorContext[BoidsController.Command], model: ActorRef[ModelCommand], view: ActorRef[ViewCommand]) {
@@ -62,9 +63,25 @@ class BoidsController(context: ActorContext[BoidsController.Command], model: Act
 
     case SimulationTick() =>
       model ! BoidsModel.UpdateBoids()
+
+      import akka.util.Timeout
+      import scala.concurrent.duration._
+
+      implicit val timeout: Timeout = Timeout(50.millis)
+      implicit val scheduler: Scheduler = context.system.scheduler
+
+      context.pipeToSelf(model.ask(BoidsModel.GetBoids.apply)) {
+        case Success(boids) => PositionsUpdated(boids.map(b => b.position))
+        case Failure(exception) => PositionError(exception)
+      }
+      Behaviors.same
+
+    case PositionError(exception) =>
+//      println(exception.getMessage)
       Behaviors.same
 
     case PositionsUpdated(positions) =>
+//      println(s"Received positions update: ${positions.size} boids")
       frameCount += 1
       val currentTime = System.currentTimeMillis()
       val fps = if (currentTime > lastFrameTime) {

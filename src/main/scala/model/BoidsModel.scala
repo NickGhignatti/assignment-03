@@ -39,6 +39,7 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
       case BoidsModel.UpdateBoids() =>
         import akka.util.Timeout
         import scala.concurrent.duration._
+        println(s"BoidsModel: Updating positions of ${boids.size} boids")
 
         implicit val timeout: Timeout = Timeout(20.millis)
         implicit val scheduler: Scheduler = context.system.scheduler
@@ -49,8 +50,10 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
               boid ! Boid.UpdatePosition(allBoids, this)
             }
             effectiveBoids =  allBoids
+            println(s"BoidsModel: Updated positions of ${effectiveBoids.size} boids")
             BoidsModel.UpdateFinished()
           case Failure(_) =>
+            println("BoidsModel: Failed to update boids")
             BoidsModel.UpdateFailed()
         }
         this
@@ -63,6 +66,7 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
         this
 
       case BoidsModel.GetBoids(replyTo) =>
+        println(s"BoidsModel: Sending ${effectiveBoids.size} boids to controller")
         replyTo ! effectiveBoids
         this
     }

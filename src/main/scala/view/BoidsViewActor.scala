@@ -11,12 +11,6 @@ object BoidsViewActor {
   case object ClearCanvas extends Command
 
   def apply(view: BoidsView): Behavior[Command] = Behaviors.setup { context =>
-//    Platform.runLater {
-//      view.startButton.onAction = _ => context.self ! StartSimulation(view.boidInput.text.value.toIntOption.getOrElse(0))
-//      view.pauseButton.onAction = _ => context.self ! PauseResumeSimulation()
-//      view.resetButton.onAction = _ => context.self ! ResetSimulation()
-//    }
-
     new BoidsViewActor(view).ready()
   }
 
