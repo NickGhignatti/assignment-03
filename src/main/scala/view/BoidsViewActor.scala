@@ -13,7 +13,7 @@ import scala.util.{Failure, Success}
 
 object BoidsViewActor {
   sealed trait Command
-  case class UpdateView() extends Command
+  private case class UpdateView() extends Command
   private case class PositionsUpdated() extends Command
   private case class PositionError(exception: Throwable) extends Command
 
@@ -42,6 +42,15 @@ class BoidsViewActor(context: ActorContext[BoidsViewActor.Command], view: BoidsV
     view.startButton.onAction = _ => {
       model ! BoidsModel.CreateBoids(view.boidInput.text.value.toIntOption.getOrElse(0))
       startTimer()
+    }
+    view.alignmentSlider.value.onChange { (_, _, newValue) =>
+      model ! BoidsModel.UpdateAlignment(newValue.doubleValue())
+    }
+    view.cohesionSlider.value.onChange { (_, _, newValue) =>
+      model ! BoidsModel.UpdateCohesion(newValue.doubleValue())
+    }
+    view.separationSlider.value.onChange { (_, _, newValue) =>
+      model ! BoidsModel.UpdateSeparation(newValue.doubleValue())
     }
     Behaviors.receiveMessage {
       case UpdateView() =>

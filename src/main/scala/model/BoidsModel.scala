@@ -14,10 +14,13 @@ object BoidsModel {
     Behaviors.setup(context => new BoidsModel(context))
 
   sealed trait Command
-  final case class UpdateBoids(replyTo: ActorRef[List[Boid]]) extends Command
-  final case class CreateBoids(quantity: Int) extends Command
   private final case class UpdateFailed() extends Command
   private final case class UpdateFinished() extends Command
+  final case class CreateBoids(quantity: Int) extends Command
+  final case class UpdateCohesion(value: Double) extends Command
+  final case class UpdateAlignment(value: Double) extends Command
+  final case class UpdateSeparation(value: Double) extends Command
+  final case class UpdateBoids(replyTo: ActorRef[List[Boid]]) extends Command
 }
 
 class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBehavior[BoidsModel.Command](context) {
@@ -64,5 +67,17 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
           boids = boids :+ context.spawn(boid, s"boid-$i")
         }
         this
+      case model.BoidsModel.UpdateCohesion(value) =>
+        this.cohesion = value
+        println(s"${this.cohesion}")
+        Behaviors.same
+      case model.BoidsModel.UpdateAlignment(value) =>
+        this.alignment = value
+        println(s"${this.alignment}")
+        Behaviors.same
+      case model.BoidsModel.UpdateSeparation(value) =>
+        this.separation = value
+        println(s"${this.separation}")
+        Behaviors.same
     }
 }
