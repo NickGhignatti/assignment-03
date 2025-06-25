@@ -1,9 +1,7 @@
-import scalafx.application.JFXApp3
+import scalafx.application.{JFXApp3, Platform}
 import scalafx.scene.Scene
-
 import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.Behaviors
-
 import view.BoidsView
 import model.BoidsModel
 import view.BoidsViewActor
@@ -21,6 +19,8 @@ object BoidsApp extends JFXApp3 {
       scene = new Scene {
         root = view.root
       }
+      onCloseRequest = _ => System.exit(0)
+
     }
   }
 }

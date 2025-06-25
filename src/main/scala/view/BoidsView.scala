@@ -14,6 +14,14 @@ class BoidsView {
   val boidInput: TextField = new TextField {
     promptText = "0"
     prefWidth = 60
+    text.onChange { (_, _, newValue) =>
+      if (newValue.nonEmpty && !newValue.forall(_.isDigit)) {
+        text.value = newValue.filter(_.isDigit)
+      }
+      if (newValue.startsWith("0") && newValue.length > 1) {
+        text.value = newValue.substring(1)
+      }
+    }
   }
 
   private val topBar = new HBox(5, startButton, pauseButton, resetButton, boidInput) {
