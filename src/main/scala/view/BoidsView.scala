@@ -9,6 +9,7 @@ import scalafx.geometry.Insets
 class BoidsView {
   val startButton = new Button("START")
   val pauseButton = new Button("RESUME/STOP")
+  pauseButton.disable = true
   val resetButton = new Button("RESET")
   val boidInput: TextField = new TextField {
     promptText = "0"
@@ -19,7 +20,7 @@ class BoidsView {
     padding = Insets(10)
   }
 
-  val canvas = new Canvas(800, 800)
+  val canvas = new Canvas(600, 600)
 
   val separationSlider: Slider = new Slider(0, 2, 1) {
     majorTickUnit = 1

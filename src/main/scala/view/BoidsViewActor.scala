@@ -23,7 +23,10 @@ object BoidsViewActor {
     }
 }
 
-class BoidsViewActor(context: ActorContext[BoidsViewActor.Command], view: BoidsView, model: ActorRef[BoidsModel.Command]) {
+class BoidsViewActor(
+                      context: ActorContext[BoidsViewActor.Command],
+                      view: BoidsView, model: ActorRef[BoidsModel.Command]
+                    ) {
   import BoidsViewActor._
 
   private var timer: Option[Cancellable] = None
@@ -38,20 +41,38 @@ class BoidsViewActor(context: ActorContext[BoidsViewActor.Command], view: BoidsV
       )(() => context.self ! UpdateView())(context.executionContext)
     )
 
+  private def stopTimer(): Unit = timer.get.cancel()
+
   private def ready(): Behavior[BoidsViewActor.Command] =
     view.startButton.onAction = _ => {
+      view.startButton.disable = true
+      view.pauseButton.disable = false
       model ! BoidsModel.CreateBoids(view.boidInput.text.value.toIntOption.getOrElse(0))
       startTimer()
     }
-    view.alignmentSlider.value.onChange { (_, _, newValue) =>
-      model ! BoidsModel.UpdateAlignment(newValue.doubleValue())
+    view.pauseButton.onAction = _ => {
+      timer match
+        case Some(x) =>
+          if x.isCancelled then startTimer()
+          else stopTimer()
+        case None =>
     }
-    view.cohesionSlider.value.onChange { (_, _, newValue) =>
-      model ! BoidsModel.UpdateCohesion(newValue.doubleValue())
+    view.resetButton.onAction = _ => {
+      view.startButton.disable = false
+      view.pauseButton.disable = true
+      model ! BoidsModel.ResetBoids()
+      stopTimer()
+      clearCanvas()
     }
-    view.separationSlider.value.onChange { (_, _, newValue) =>
-      model ! BoidsModel.UpdateSeparation(newValue.doubleValue())
-    }
+    view.alignmentSlider.setOnMouseReleased({ _ =>
+      model ! BoidsModel.UpdateAlignment(view.alignmentSlider.value.doubleValue())
+    })
+    view.cohesionSlider.setOnMouseReleased({ _ =>
+      model ! BoidsModel.UpdateCohesion(view.cohesionSlider.value.doubleValue())
+    })
+    view.separationSlider.setOnMouseReleased({ _ =>
+      model ! BoidsModel.UpdateSeparation(view.separationSlider.value.doubleValue())
+    })
     Behaviors.receiveMessage {
       case UpdateView() =>
         import akka.util.Timeout
@@ -65,7 +86,8 @@ class BoidsViewActor(context: ActorContext[BoidsViewActor.Command], view: BoidsV
             drawBoids(boids.map(b => b.position), boids.size, 25.0)
             PositionsUpdated()
           }
-          case Failure(exception) => PositionError(exception)
+          case Failure(exception) =>
+            PositionError(exception)
         }
         Behaviors.same
       case PositionsUpdated() =>

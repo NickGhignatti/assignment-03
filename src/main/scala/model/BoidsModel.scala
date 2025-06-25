@@ -17,6 +17,7 @@ object BoidsModel {
   private final case class UpdateFailed() extends Command
   private final case class UpdateFinished() extends Command
   final case class CreateBoids(quantity: Int) extends Command
+  final case class ResetBoids() extends Command
   final case class UpdateCohesion(value: Double) extends Command
   final case class UpdateAlignment(value: Double) extends Command
   final case class UpdateSeparation(value: Double) extends Command
@@ -34,9 +35,10 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
   val perceptionRadius: Double = 50.0
 
   var boids: List[ActorRef[Boid.Command]] = List.empty
-  var effectiveBoids: List[Boid] = List.empty
+  private var effectiveBoids: List[Boid] = List.empty
 
   override def onMessage(msg: BoidsModel.Command): Behavior[BoidsModel.Command] =
+
     msg match {
       case BoidsModel.UpdateBoids(replyTo) =>
         import akka.util.Timeout
@@ -50,16 +52,17 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
             boids.foreach { boid =>
               boid ! Boid.UpdatePosition(allBoids, this)
             }
-            effectiveBoids =  allBoids
+            effectiveBoids = allBoids
             replyTo ! effectiveBoids
             BoidsModel.UpdateFinished()
           case Failure(_) =>
+            context.log.warn("UpdateBoids: Some boids failed to respond")
+            replyTo ! effectiveBoids
             BoidsModel.UpdateFailed()
         }
         this
 
-      case BoidsModel.UpdateFinished() =>
-        this
+      case BoidsModel.UpdateFinished() => this
 
       case BoidsModel.CreateBoids(quantity) =>
         for (i <- 0 until quantity) {
@@ -78,6 +81,14 @@ class BoidsModel(context: ActorContext[BoidsModel.Command]) extends AbstractBeha
       case model.BoidsModel.UpdateSeparation(value) =>
         this.separation = value
         println(s"${this.separation}")
+        Behaviors.same
+      case model.BoidsModel.UpdateFailed() =>
+        context.log.warn("UpdateBoids: Overall update failed")
+        Behaviors.same
+      case model.BoidsModel.ResetBoids() =>
+        boids.foreach(context.stop)
+        boids = List.empty
+        effectiveBoids = List.empty
         Behaviors.same
     }
 }
